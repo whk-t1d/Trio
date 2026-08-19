@@ -12,18 +12,15 @@ enum TempBasalFunctionError: LocalizedError, Equatable {
 }
 
 enum TempBasalFunctions {
-    /// Rounds basal rates to match the basal increment for the pump as the basal rate increases
-    static func roundBasal(profile _: Profile, basalRate: Decimal) -> Decimal {
-        // FIXME: Should we just call the pumpManager here?
-
-        let roundedBasal: Decimal
-        if basalRate < 10 {
-            roundedBasal = (basalRate * 20).jsRounded() / 20
-        } else {
-            roundedBasal = (basalRate * 10).jsRounded() / 10
+    /// Rounds a basal rate down to the nearest rate the paired pump can deliver, mirroring
+    /// `PumpManager.roundToSupportedBasalRate`, which is applied again at enactment.
+    static func roundBasal(profile: Profile, basalRate: Decimal) -> Decimal {
+        // no pump paired: leave the rate alone beyond keeping reason strings readable
+        guard !profile.supportedBasalRates.isEmpty else {
+            return basalRate.rounded(scale: 3, roundingMode: .down)
         }
 
-        return roundedBasal
+        return profile.supportedBasalRates.lazy.filter { $0 <= basalRate }.max() ?? 0
     }
 
     /// defines the max safe basal rate given a profile

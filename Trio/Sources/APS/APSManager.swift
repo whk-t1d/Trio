@@ -521,6 +521,7 @@ final class BaseAPSManager: APSManager, Injectable {
 
             let determination = try await openAPS.determineBasal(
                 currentTemp: currentTemp,
+                supportedBasalRates: supportedBasalRates,
                 shouldSmoothGlucose: settingsManager.settings.smoothGlucose,
                 clock: now
             )
@@ -567,6 +568,7 @@ final class BaseAPSManager: APSManager, Injectable {
             let temp = try await fetchCurrentTempBasal(date: Date.now)
             return try await openAPS.determineBasal(
                 currentTemp: temp,
+                supportedBasalRates: supportedBasalRates,
                 shouldSmoothGlucose: settingsManager.settings.smoothGlucose,
                 clock: Date(),
                 simulatedCarbsAmount: simulatedCarbsAmount,
@@ -580,6 +582,13 @@ final class BaseAPSManager: APSManager, Injectable {
             )
             return nil
         }
+    }
+
+    /// The paired pump's deliverable basal rates, for the algorithm to round against.
+    /// Rounded to 3 dp because the kits build their tables as `Double(n) / 20` and similar, and the
+    /// resulting binary error would push an entry just above the clean rate it is meant to match.
+    private var supportedBasalRates: [Decimal] {
+        (pumpManager?.supportedBasalRates ?? []).map { Decimal($0).rounded(scale: 3) }
     }
 
     func roundBolus(amount: Decimal) -> Decimal {
