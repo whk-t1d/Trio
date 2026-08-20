@@ -3,26 +3,9 @@ import Testing
 @testable import Trio
 
 /// `TempBasalFunctions.roundBasal` must reproduce the paired driver's own rate table.
-/// Tables are built arithmetically here so this suite runs in the algorithm-only SPM target;
+/// Tables come from `PumpRateTables` so this suite runs in the algorithm-only SPM target;
 /// `BasalRoundingDriverParityTests` checks them against the real kits.
 @Suite("Round Basal Tests") struct RoundBasalTests {
-    /// Dana: 0.01 U/hr flat, up to 3 U/hr.
-    static let danaRates: [Decimal] = (0 ... 300).map { Decimal($0) / 100 }
-
-    /// Omnipod Eros: 0.05 U/hr flat to 30, and no zero rate.
-    static let erosRates: [Decimal] = (1 ... 600).map { Decimal($0) / 20 }
-
-    /// Omnipod non-Eros and Medtrum: 0.05 U/hr flat, zero allowed.
-    static let flatRates: [Decimal] = (0 ... 600).map { Decimal($0) / 20 }
-
-    /// Minimed pre-x23: 0.05 U/hr flat to 35.
-    static let minimedPre23Rates: [Decimal] = (0 ... 700).map { Decimal($0) / 20 }
-
-    /// Minimed gen >= 23: 0.025 below 1 U/hr, 0.05 to 9.95, 0.1 above.
-    static let minimedGen23Rates: [Decimal] = (0 ... 39).map { Decimal($0) / 40 }
-        + (20 ... 199).map { Decimal($0) / 20 }
-        + (100 ... 350).map { Decimal($0) / 10 }
-
     private func profile(_ rates: [Decimal]) -> Profile {
         var profile = Profile()
         profile.supportedBasalRates = rates
@@ -35,34 +18,34 @@ import Testing
 
     @Test("Dana keeps the 0.01 resolution the pump delivers") func danaResolution() {
         // the regression from issue #1424: the old bands turned this into 1.25
-        #expect(round(1.23, Self.danaRates) == 1.23)
-        #expect(round(0.01, Self.danaRates) == 0.01)
+        #expect(round(1.23, PumpRateTables.dana) == 1.23)
+        #expect(round(0.01, PumpRateTables.dana) == 0.01)
         // built as Decimal(56) / 100: the literal 0.56 is parsed via Double and is not exact
-        #expect(round(0.567, Self.danaRates) == Decimal(56) / 100)
+        #expect(round(0.567, PumpRateTables.dana) == Decimal(56) / 100)
     }
 
     @Test("Dana clamps to the top of its table") func danaCeiling() {
-        #expect(round(4, Self.danaRates) == 3)
+        #expect(round(4, PumpRateTables.dana) == 3)
     }
 
     @Test("flat 0.05 pumps keep rates above 10 U/hr") func flatAboveTen() {
         // the old bands switched to 0.1 above 10 and pushed this to 10.1
-        #expect(round(10.05, Self.flatRates) == 10.05)
-        #expect(round(10.05, Self.minimedPre23Rates) == 10.05)
+        #expect(round(10.05, PumpRateTables.flat) == 10.05)
+        #expect(round(10.05, PumpRateTables.minimedPre23) == 10.05)
     }
 
     @Test("Omnipod Eros floors below its minimum rate to zero") func erosBelowMinimum() {
         // the pod cannot deliver 0.03; the old bands claimed 0.05
-        #expect(round(0.03, Self.erosRates) == 0)
-        #expect(round(0.07, Self.erosRates) == 0.05)
+        #expect(round(0.03, PumpRateTables.omnipodEros) == 0)
+        #expect(round(0.07, PumpRateTables.omnipodEros) == 0.05)
     }
 
     @Test("Minimed gen >= 23 keeps its 0.025 resolution") func minimedFineResolution() {
         // dead in production before this change: model.json was always "722"
-        #expect(round(0.025, Self.minimedGen23Rates) == 0.025)
-        #expect(round(0.03, Self.minimedGen23Rates) == 0.025)
-        #expect(round(1.03, Self.minimedGen23Rates) == 1.0)
-        #expect(round(10.06, Self.minimedGen23Rates) == 10.0)
+        #expect(round(0.025, PumpRateTables.minimedGen23) == 0.025)
+        #expect(round(0.03, PumpRateTables.minimedGen23) == 0.025)
+        #expect(round(1.03, PumpRateTables.minimedGen23) == 1.0)
+        #expect(round(10.06, PumpRateTables.minimedGen23) == 10.0)
     }
 
     @Test("no pump paired leaves the rate alone but keeps it readable") func noPump() {
@@ -79,7 +62,7 @@ import Testing
     @Test("rounding never exceeds the requested rate", arguments: [
         Decimal(0), 0.011, 0.03, 0.4, 0.999, 1.0, 1.234, 5.375, 9.99, 10.06, 29.999
     ]) func neverRoundsUp(rate: Decimal) {
-        for rates in [Self.danaRates, Self.erosRates, Self.flatRates, Self.minimedGen23Rates] {
+        for rates in [PumpRateTables.dana, PumpRateTables.omnipodEros, PumpRateTables.flat, PumpRateTables.minimedGen23] {
             let rounded = round(rate, rates)
             #expect(rounded <= rate)
             #expect(rounded == 0 || rates.contains(rounded))
@@ -87,7 +70,7 @@ import Testing
     }
 
     @Test("setTempBasal delivers a Dana rate at full resolution") func setTempBasalKeepsResolution() throws {
-        var profile = profile(Self.danaRates)
+        var profile = profile(PumpRateTables.dana)
         profile.currentBasal = 0.8
         profile.maxDailyBasal = 1.3
         profile.maxBasal = 3.0
@@ -104,7 +87,7 @@ import Testing
     }
 
     @Test("setTempBasal never rounds above the max safe basal rate") func neverExceedsMaxSafeBasal() throws {
-        var profile = profile(Self.flatRates)
+        var profile = profile(PumpRateTables.flat)
         profile.currentBasal = 0.8
         profile.maxDailyBasal = 0.99
         profile.maxBasal = 2.97
@@ -127,7 +110,7 @@ import Testing
 
     @Test("computeAdjustedBasal keeps Dana resolution through the sensitivity ratio") func computeAdjustedBasalResolution() {
         let adjusted = DeterminationGenerator.computeAdjustedBasal(
-            profile: profile(Self.danaRates),
+            profile: profile(PumpRateTables.dana),
             currentBasalRate: 1.23,
             sensitivityRatio: 1,
             overrideFactor: 1

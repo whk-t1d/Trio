@@ -4,14 +4,6 @@ import Testing
 
 /// A direct port of the Javascript `set-temp-basal.test.js` tests
 @Suite("Set Temp Basal Tests") struct SetTempBasalTests {
-    /// Omnipod's flat 0.05 U/hr table, the default pump shape for these tests.
-    static let omnipodRates: [Decimal] = (0 ... 600).map { Decimal($0) / 20 }
-
-    /// A Minimed gen >= 23 table: 0.025 U/hr below 1, 0.05 to 9.95, 0.1 above.
-    static let minimedGen23Rates: [Decimal] = (0 ... 39).map { Decimal($0) / 40 }
-        + (20 ... 199).map { Decimal($0) / 20 }
-        + (100 ... 350).map { Decimal($0) / 10 }
-
     /// Helper to create a default profile for tests.
     private func createProfile(
         currentBasal: Decimal = 0.8,
@@ -20,7 +12,7 @@ import Testing
         skipNeutralTemps: Bool = false,
         maxDailySafetyMultiplier: Decimal = 3,
         currentBasalSafetyMultiplier: Decimal = 4,
-        supportedBasalRates: [Decimal] = SetTempBasalTests.omnipodRates
+        supportedBasalRates: [Decimal] = PumpRateTables.flat
     ) -> Profile {
         var profile = Profile()
         profile.currentBasal = currentBasal
@@ -254,7 +246,7 @@ import Testing
             maxDailyBasal: 1.3,
             maxBasal: 10.0,
             currentBasalSafetyMultiplier: 5,
-            supportedBasalRates: SetTempBasalTests.minimedGen23Rates
+            supportedBasalRates: PumpRateTables.minimedGen23
         )
         let determination = createDetermination()
         let currentTemp = createCurrentTemp(rate: 0.025, duration: 24)
@@ -276,7 +268,7 @@ import Testing
             maxDailyBasal: 11.3,
             maxBasal: 50.0,
             currentBasalSafetyMultiplier: 5,
-            supportedBasalRates: SetTempBasalTests.minimedGen23Rates
+            supportedBasalRates: PumpRateTables.minimedGen23
         )
         let determination = createDetermination()
         let currentTemp = createCurrentTemp(rate: 10.1, duration: 24)
