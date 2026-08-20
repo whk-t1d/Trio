@@ -50,6 +50,40 @@ import Testing
         }
     }
 
+    /// The rate `APSManager.performBasal` hands over must be the *same* `Double` the driver's own
+    /// table holds. `Double(truncating:)` lands below on 41 of Dana's 301 rates (0.07 becomes
+    /// 0.06999999999999999), and since every table floors, that silently costs a full increment.
+    @Test("the rate handed to the driver survives the Decimal to Double hop", arguments: [
+        ("Minimed 723 (gen >= 23)", PumpModel.model723.supportedBasalRates),
+        ("Minimed 522 (pre-x23)", PumpModel.model522.supportedBasalRates),
+        ("Dana", DanaKitPumpManager.onboardingSupportedBasalRates),
+        ("Medtrum", MedtrumPumpManager.onboardingSupportedBasalRates),
+        ("Omnipod Eros", (1 ... 600).map { Double($0) / 20 })
+    ]) func handedOverRateSurvivesConversion(pump: String, table: [Double]) {
+        for entry in table {
+            // what roundBasal returns: the injected table entry, an exact 3 dp Decimal
+            let algorithmRate = Decimal(entry).rounded(scale: 3)
+            // what performBasal sends
+            let handedOver = algorithmRate.nearestDouble
+
+            #expect(handedOver == entry, "\(pump): \(algorithmRate) converted to \(handedOver), table holds \(entry)")
+            #expect(
+                (table.last { $0 <= handedOver } ?? 0) == entry,
+                "\(pump): the driver would floor \(handedOver) below \(entry)"
+            )
+        }
+    }
+
+    @Test("the lossy conversion this replaced really did drop an increment") func lossyConversionRegression() {
+        // pins why nearestDouble exists, so nobody reverts it to Double(truncating:)
+        let dana = DanaKitPumpManager.onboardingSupportedBasalRates
+        for rate in [Decimal(7) / 100, Decimal(14) / 100, Decimal(199) / 100] {
+            let lossy = Double(truncating: rate as NSNumber)
+            #expect((dana.last { $0 <= lossy } ?? 0) != rate.nearestDouble)
+            #expect((dana.last { $0 <= rate.nearestDouble } ?? 0) == rate.nearestDouble)
+        }
+    }
+
     @Test("every kit table is non-empty and normalises without collisions") func tablesNormaliseCleanly() {
         for table in [
             PumpModel.model723.supportedBasalRates,

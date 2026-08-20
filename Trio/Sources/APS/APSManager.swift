@@ -813,18 +813,17 @@ final class BaseAPSManager: APSManager, Injectable {
     }
 
     private func performBasal(pump: PumpManager, rate: NSDecimalNumber, duration: TimeInterval) async throws {
-        let requested = Double(truncating: rate)
-        let rounded = pump.roundToSupportedBasalRate(unitsPerHour: requested)
-        if rounded != requested {
-            // should be unreachable; kept for rare edge case logging
-            debug(.apsManager, "Temp basal \(requested) U/hr not deliverable, enacting \(rounded) U/hr")
+        // the algorithm already floored this against the pump's own table, so don't floor it
+        // again here: the Decimal -> Double hop can land a hair low and cost a whole increment
+        let unitsPerHour = rate.decimalValue.nearestDouble
+        if pump.roundToSupportedBasalRate(unitsPerHour: unitsPerHour) != unitsPerHour {
+            debug(.apsManager, "Temp basal \(unitsPerHour) U/hr is not on the pump's rate table")
         }
-        try await pump.enactTempBasal(unitsPerHour: rounded, for: duration)
+        try await pump.enactTempBasal(unitsPerHour: unitsPerHour, for: duration)
     }
 
     private func performBolus(pump: PumpManager, smbToDeliver: NSDecimalNumber) async throws {
-        let rounded = pump.roundToSupportedBolusVolume(units: Double(truncating: smbToDeliver))
-        try await pump.enactBolus(units: rounded, automatic: true)
+        try await pump.enactBolus(units: smbToDeliver.decimalValue.nearestDouble, automatic: true)
         bolusProgress.send(0)
     }
 
